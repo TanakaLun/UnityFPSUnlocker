@@ -4,9 +4,9 @@
 #include "utility/config.hh"
 
 namespace FPSLimiter {
-    void Start(const ConfigValue&);
-    void UpdateConfig(const ConfigValue& new_config);
-    void SetFrameRate(int fps);
+    void Start(const ConfigValue& config);
+    bool IsRunning();
+    void Stop();
 } // namespace FPSLimiter
 
 #endif // fpslimiter.hh

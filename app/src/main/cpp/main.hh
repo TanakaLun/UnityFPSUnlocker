@@ -1,29 +1,23 @@
 #ifndef MAIN_HEADER
 #define MAIN_HEADER
 
-#include "third/zygisk.hh"
+#include <string>
 
 #include "utility/config.hh"
 #include "utility/logger.hh"
 
-using zygisk::Api;
-using zygisk::AppSpecializeArgs;
-
-class MyModule : public zygisk::ModuleBase {
+class FPSUnlockerManager {
 public:
-    virtual void onLoad(Api* api, JNIEnv* env) override final;
-    virtual void preAppSpecialize(AppSpecializeArgs* args) override final;
-    virtual void postAppSpecialize(const AppSpecializeArgs* args) override final;
-
+    static FPSUnlockerManager& GetInstance();
+    
+    void Initialize();
+    void SetConfig(const ConfigValue& config);
+    void SetConfigForPackage(const std::string& package_name, const ConfigValue& config);
+    ConfigValue GetCurrentConfig() const;
+    
 private:
-    Api* api;
-    JNIEnv* env;
-    int module_dir_fd_ = -1;
-    int has_custom_cfg_ = false;
-    const char* package_name_ = nullptr;
-    ConfigValue current_cfg_;
-
-    void ForHoudini();
+    FPSUnlockerManager() = default;
+    ConfigValue current_config_;
 };
 
 #endif // main.hh

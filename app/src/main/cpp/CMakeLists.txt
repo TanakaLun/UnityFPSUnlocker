@@ -1,19 +1,10 @@
 ﻿# CMakeList.txt: UnityFPSUnlocker 的 CMake 项目
-#
-cmake_minimum_required (VERSION 3.18)
-
-# 添加 project 命令
-project(UnityFPSUnlocker)
+cmake_minimum_required (VERSION 3.21)
 
 set(CMAKE_CXX_STANDARD 17)
-set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fno-rtti -fno-exceptions -D_LIBCPP_DISABLE_VISIBILITY_ANNOTATIONS")
 
 set(LibraryName UnityFPSUnlocker)
-
-# 隐藏导出函数
-set(CMAKE_C_VISIBILITY_PRESET hidden)
-set(CMAKE_CXX_VISIBILITY_PRESET hidden)
 
 # 添加Debug和Release版本信息
 string(TOUPPER ${CMAKE_BUILD_TYPE} CMAKE_BUILD_TYPE_UP)
@@ -29,32 +20,21 @@ else()
     set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} -s -Wl,--exclude-libs,ALL -Wl,--gc-sections -flto")
 endif()
 
-set(CMAKE_PREFIX_PATH "${CMAKE_SYSROOT}/${CMAKE_LIBRARY_ARCHITECTURE}")
-message(STATUS "CMAKE_PREFIX_PATH: ${CMAKE_PREFIX_PATH}")
-
 # 添加头文件
 include_directories(
     .
-    "third/rapidjson"
+    "third/absl"
     "third/xdl"
-    "third/absl"  # 添加 absl 头文件路径
 )
 
 # 文件写出位置
 set(LIBRARY_OUTPUT_PATH ${PROJECT_SOURCE_DIR}/libs/${CMAKE_BUILD_TYPE}/)
 
-# 将源代码添加到此项目的可执行文件。
+# 源代码
 aux_source_directory(${PROJECT_SOURCE_DIR}/${LibraryName} program-src)
 aux_source_directory(unity unity-src)
 aux_source_directory(utility utility-src)
 aux_source_directory(third/xdl xdl-src)
-aux_source_directory(file_watch listener-src)
-aux_source_directory(file_watch/dispatcher dispatcher-src)
-
-# 添加 jni_interface.cc
-set(JNI_SOURCES 
-    ${PROJECT_SOURCE_DIR}/jni_interface.cc
-)
 
 add_library (
     ${LibraryName}
@@ -62,19 +42,17 @@ add_library (
     ${program-src}
     ${unity-src}
     ${utility-src}
-    ${listener-src}
-    ${dispatcher-src}
     ${xdl-src}
-    ${JNI_SOURCES}
 )
 
 find_library(log-lib log)
 target_link_libraries(${LibraryName} ${log-lib})
 
-# 移除对 absl 的依赖，使用标准库替代
-# find_package(absl REQUIRED)
-# target_link_libraries(${LibraryName} absl::status)
-# target_link_libraries(${LibraryName} absl::statusor)  
+# 只链接实际使用的absl组件
+target_link_libraries(${LibraryName} absl::status)
+target_link_libraries(${LibraryName} absl::statusor)
+target_link_libraries(${LibraryName} absl::flat_hash_map)
+# 移除未使用的 flat_hash_set
 # target_link_libraries(${LibraryName} absl::flat_hash_set)
 
 set_target_properties(${LibraryName} PROPERTIES PREFIX "")

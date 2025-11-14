@@ -1,262 +1,115 @@
 #include "main.hh"
 
-#include <dlfcn.h>
-#include <fcntl.h>
 #include <jni.h>
-
-#include <fstream>
 #include <thread>
+#include <string>
 
-#include <absl/container/flat_hash_map.h>
-#include <absl/status/status.h>
-#include <absl/status/statusor.h>
-#include <absl/strings/str_split.h>
-#include <absl/strings/substitute.h>
-
-#include "file_watch/dispatcher/epoller.hh"
-#include "file_watch/listener.hh"
 #include "fpslimiter.hh"
-#include "third/riru_hide/hide.hh"
-#include "utility/houdini.hh"
-#include "utility/socket.hh"
+#include "utility/logger.hh"
 
-using namespace rapidjson;
-
-static bool is_loaded = false;
-static int watch_descriptor = -1;
-static absl::flat_hash_map<std::string, ConfigValue> custom_list;
-static ConfigValue global_cfg;
-static FileWatch::Listener* file_watch_listener = nullptr;
-
-constexpr const char* ConfigFile = "/data/local/tmp/TargetList.json";
-
-absl::Status LoadConfig() {
-    custom_list.clear();
-
-    auto read_path = Utility::LoadJsonFromFile(ConfigFile);
-    if (!read_path.ok()) {
-        return read_path.status();
-    }
-
-    Document& doc = *read_path;
-    if (auto itor = doc.FindMember("global"); itor != doc.MemberEnd() && itor->value.IsObject()) {
-        const auto& itor_json_object = itor->value.GetObject();
-        if (auto itor2 = itor_json_object.FindMember("delay"); itor2 != itor_json_object.MemberEnd() && itor2->value.IsInt()) {
-            global_cfg.delay_ = itor2->value.GetInt();
-        }
-        if (auto itor2 = itor_json_object.FindMember("fps"); itor2 != itor_json_object.MemberEnd() && itor2->value.IsInt()) {
-            global_cfg.fps_ = itor2->value.GetInt();
-        }
-        if (auto itor2 = itor_json_object.FindMember("mod_opcode"); itor2 != itor_json_object.MemberEnd() && itor2->value.IsBool()) {
-            global_cfg.mod_opcode_ = itor2->value.GetBool();
-        }
-        if (auto itor2 = itor_json_object.FindMember("scale"); itor2 != itor_json_object.MemberEnd() && itor2->value.IsFloat()) {
-            global_cfg.scale_ = itor2->value.GetFloat();
-        }
-    }
-
-    if (auto itor = doc.FindMember("custom"); itor != doc.MemberEnd() && itor->value.IsObject()) {
-        for (const auto& item : itor->value.GetObject()) {
-            if (item.value.IsObject()) {
-                auto cfg(global_cfg);
-                if (item.value.MemberCount()) {
-                    if (auto itor2 = item.value.FindMember("delay"); itor2 != item.value.MemberEnd() && itor2->value.IsInt()) {
-                        cfg.delay_ = itor2->value.GetInt();
-                    }
-                    if (auto itor2 = item.value.FindMember("fps"); itor2 != item.value.MemberEnd() && itor2->value.IsInt()) {
-                        cfg.fps_ = itor2->value.GetInt();
-                    }
-                    if (auto itor2 = item.value.FindMember("mod_opcode"); itor2 != item.value.MemberEnd() && itor2->value.IsBool()) {
-                        cfg.mod_opcode_ = itor2->value.GetBool();
-                    }
-                    if (auto itor2 = item.value.FindMember("scale"); itor2 != item.value.MemberEnd() && itor2->value.IsFloat()) {
-                        cfg.scale_ = itor2->value.GetFloat();
-                    }
-                }
-                custom_list[item.name.GetString()] = cfg;
-            }
-        }
-    }
-
-    LOG("[LoadConfig] custom_list: %zu", custom_list.size());
-    LOG("[LoadConfig] global_cfg: ");
-    global_cfg.DebugPrint();
-
-    return absl::OkStatus();
+FPSUnlockerManager& FPSUnlockerManager::GetInstance() {
+    static FPSUnlockerManager instance;
+    return instance;
 }
 
-void OnModified(int wd) {
-    if (wd == watch_descriptor) {
-        LoadConfig().IgnoreError();
-    }
+void FPSUnlockerManager::Initialize() {
+    // 初始化默认配置
+    current_config_ = ConfigValue(3, 120, true, 1.0f);
+    LOG("[FPSUnlocker] Manager initialized with default config");
 }
 
-void OnDeleted() {
-    watch_descriptor = -1;
-}
-
-// In zygiskd memory.
-void CompanionEntry(int s) {
-    std::string package_name = read_string(s);
-    if (is_loaded == false) {
-        if (auto res = LoadConfig(); res.ok()) {
-            is_loaded = true;
-            file_watch_listener = new FileWatch::Listener();
-            EPoller* file_watch_poller = new EPoller(file_watch_listener);
-            EPoller::reserved_list_.push_back(file_watch_poller);
-            std::thread([=] {
-                while (true) {
-                    file_watch_poller->Poll();
-                }
-            }).detach();
-            watch_descriptor = file_watch_listener->Register(ConfigFile, OnModified, OnDeleted);
-        }
-        else {
-            ERROR("LoadConfig error: %s", res.message().data());
-        }
-    }
-
-    if (is_loaded && watch_descriptor == -1) {
-        watch_descriptor = file_watch_listener->Register(ConfigFile, OnModified, OnDeleted);
-    }
-
-    if (auto itor = custom_list.find(package_name); itor != custom_list.end()) {
-        write_int(s, 1);
-        write_int(s, itor->second.delay_);
-        write_int(s, itor->second.fps_);
-        write_int(s, itor->second.mod_opcode_);
-        write_float(s, itor->second.scale_);
-    }
-    else {
-        write_int(s, 0);
-        write_int(s, global_cfg.delay_);
-        write_int(s, global_cfg.fps_);
-        write_int(s, global_cfg.mod_opcode_);
-        write_float(s, global_cfg.scale_);
-    }
-}
-
-REGISTER_ZYGISK_MODULE(MyModule)
-REGISTER_ZYGISK_COMPANION(CompanionEntry)
-
-void MyModule::onLoad(Api* api, JNIEnv* env) {
-    this->api = api;
-    this->env = env;
-}
-
-void MyModule::preAppSpecialize(AppSpecializeArgs* args) {
-    int client_socket = api->connectCompanion();
-
-    package_name_ = env->GetStringUTFChars(args->nice_name, nullptr);
-    write_string(client_socket, package_name_);
-
-    has_custom_cfg_ = read_int(client_socket);
-    current_cfg_.delay_ = read_int(client_socket);
-    current_cfg_.fps_ = read_int(client_socket);
-    current_cfg_.mod_opcode_ = read_int(client_socket);
-    current_cfg_.scale_ = read_float(client_socket);
-
-    close(client_socket);
-}
-
-void MyModule::ForHoudini() {
-#if defined(__i386__) || defined(__x86_64__)
-    std::thread([=]() {
-        std::chrono::seconds sleep_duration(current_cfg_.delay_);
-        std::this_thread::sleep_for(sleep_duration);
-#ifdef __x86_64__
-#define libdir       "/lib64/x86_64"
-#define library_name "arm64-v8a.so"
-#endif
-
-#ifdef __i386__
-#define libdir       "/lib64/x86"
-#define library_name "armeabi-v7a.so"
-#endif
-
-        auto vms = Utility::GetVM();
-        if (!vms.ok()) {
-            ERROR("%s", vms.status().message().data());
-            return;
-        }
-
-        JNIEnv* env = nullptr;
-        if (vms.value()->AttachCurrentThread(&env, nullptr) < 0) {
-            ERROR("Cannot connect to JNI environment");
-            return;
-        }
-
-        auto app_info = Utility::GetApplicationInfo(env);
-        auto path = Utility::GetLibraryPath(env, app_info.value());
-
-        if (!path.ok()) {
-            ERROR("%s", vms.status().message().data());
-            return;
-        }
-
-        if (path.value().find(libdir) == std::string::npos) {
-            auto& houdini = Houdini::GetInstance();
-            auto plugin = houdini.LoadLibrary("/data/local/tmp/gh@hexstr/UnityFPSUnlocker/" library_name, RTLD_NOW);
-            if (plugin.ok()) {
-                if (plugin.value() == nullptr) {
-                    ERROR("Failed to load library : %s", Houdini::GetInstance().GetError());
-                    return;
-                }
-                ConfigValue config(0, current_cfg_.fps_, current_cfg_.mod_opcode_, current_cfg_.scale_);
-                if (auto result = houdini.CallJNI(plugin.value(), vms.value(), &config);
-                    !result.ok()) {
-                    ERROR("%s", plugin.status().message().data());
-                }
-                riru_hide("/data/local/tmp/gh@hexstr/UnityFPSUnlocker/" library_name);
-            }
-            else {
-                ERROR("%s", plugin.status().message().data());
-            }
-        }
-        else {
-            FPSLimiter::Start(current_cfg_);
-        }
+void FPSUnlockerManager::SetConfig(const ConfigValue& config) {
+    current_config_ = config;
+    LOG("[FPSUnlocker] Config updated");
+    current_config_.DebugPrint();
+    
+    // 应用新配置
+    std::thread([config]() {
+        FPSLimiter::Start(config);
     }).detach();
-#endif
 }
 
-void MyModule::postAppSpecialize(const AppSpecializeArgs* args) {
-    auto path = absl::Substitute("/sdcard/Android/data/$0/files/il2cpp", package_name_);
-    if ((has_custom_cfg_ || access(path.c_str(), F_OK) == 0) && current_cfg_.fps_ > 0) {
-#if defined(__ARM_ARCH_7A__) || defined(__aarch64__)
-        std::thread([=]() {
-            FPSLimiter::Start(current_cfg_);
-        }).detach();
-#endif
-        ForHoudini();
-    }
-    else {
-        api->setOption(zygisk::Option::DLCLOSE_MODULE_LIBRARY);
-    }
-    env->ReleaseStringUTFChars(args->nice_name, package_name_);
+void FPSUnlockerManager::SetConfigForPackage(const std::string& package_name, const ConfigValue& config) {
+    current_config_ = config;
+    LOG("[FPSUnlocker] Config updated for package: %s", package_name.c_str());
+    current_config_.DebugPrint();
+    
+    // 应用新配置
+    std::thread([config]() {
+        FPSLimiter::Start(config);
+    }).detach();
 }
 
-#if defined(__ARM_ARCH_7A__) || defined(__aarch64__)
+ConfigValue FPSUnlockerManager::GetCurrentConfig() const {
+    return current_config_;
+}
 
+// JNI方法 - 供Java层调用
 extern "C" {
-JNIEXPORT void JNICALL Java_io_github_hexstr_UnityFPSUnlocker_MyModule_HelloWorld(JNIEnv* env, jobject obj, jint delay, jint fps, jint mod_opcode, jfloat scale) {
-    LOG("[UnityFPSUnlocker][xposed] delay: %d | fps: %d | mod_opcode: %d | scale: %f", delay, fps, mod_opcode, scale);
-    ConfigValue current_cfg(delay, fps, mod_opcode, scale);
-    std::thread([=]() {
-        FPSLimiter::Start(current_cfg);
+
+JNIEXPORT void JNICALL Java_io_github_hexstr_UnityFPSUnlocker_Main_nativeInitialize(JNIEnv* env, jclass clazz) {
+    FPSUnlockerManager::GetInstance().Initialize();
+}
+
+JNIEXPORT void JNICALL Java_io_github_hexstr_UnityFPSUnlocker_Main_nativeSetConfig(
+    JNIEnv* env, jclass clazz, 
+    jint delay, jint fps, jboolean mod_opcode, jfloat scale) {
+    
+    ConfigValue config(delay, fps, mod_opcode, scale);
+    FPSUnlockerManager::GetInstance().SetConfig(config);
+}
+
+JNIEXPORT void JNICALL Java_io_github_hexstr_UnityFPSUnlocker_Main_nativeSetConfigForPackage(
+    JNIEnv* env, jclass clazz, jstring package_name,
+    jint delay, jint fps, jboolean mod_opcode, jfloat scale) {
+    
+    const char* native_package_name = env->GetStringUTFChars(package_name, 0);
+    ConfigValue config(delay, fps, mod_opcode, scale);
+    FPSUnlockerManager::GetInstance().SetConfigForPackage(native_package_name, config);
+    env->ReleaseStringUTFChars(package_name, native_package_name);
+}
+
+JNIEXPORT jint JNICALL Java_io_github_hexstr_UnityFPSUnlocker_Main_nativeGetDelay(JNIEnv* env, jclass clazz) {
+    return FPSUnlockerManager::GetInstance().GetCurrentConfig().delay_;
+}
+
+JNIEXPORT jint JNICALL Java_io_github_hexstr_UnityFPSUnlocker_Main_nativeGetFPS(JNIEnv* env, jclass clazz) {
+    return FPSUnlockerManager::GetInstance().GetCurrentConfig().fps_;
+}
+
+JNIEXPORT jboolean JNICALL Java_io_github_hexstr_UnityFPSUnlocker_Main_nativeGetModOpcode(JNIEnv* env, jclass clazz) {
+    return FPSUnlockerManager::GetInstance().GetCurrentConfig().mod_opcode_;
+}
+
+JNIEXPORT jfloat JNICALL Java_io_github_hexstr_UnityFPSUnlocker_Main_nativeGetScale(JNIEnv* env, jclass clazz) {
+    return FPSUnlockerManager::GetInstance().GetCurrentConfig().scale_;
+}
+
+// 直接启动FPS解锁（兼容旧版本）
+JNIEXPORT void JNICALL Java_io_github_hexstr_UnityFPSUnlocker_Main_nativeStart(
+    JNIEnv* env, jclass clazz, 
+    jint delay, jint fps, jboolean mod_opcode, jfloat scale) {
+    
+    ConfigValue config(delay, fps, mod_opcode, scale);
+    std::thread([config]() {
+        FPSLimiter::Start(config);
     }).detach();
 }
+
+JNIEXPORT void JNICALL Java_io_github_hexstr_UnityFPSUnlocker_Main_nativeStartForPackage(
+    JNIEnv* env, jclass clazz, jstring package_name,
+    jint delay, jint fps, jboolean mod_opcode, jfloat scale) {
+    
+    const char* native_package_name = env->GetStringUTFChars(package_name, 0);
+    ConfigValue config(delay, fps, mod_opcode, scale);
+    
+    LOG("[FPSUnlocker] Starting FPS unlock for package: %s", native_package_name);
+    
+    std::thread([config]() {
+        FPSLimiter::Start(config);
+    }).detach();
+    
+    env->ReleaseStringUTFChars(package_name, native_package_name);
 }
 
-JNIEXPORT jint JNI_OnLoad(JavaVM* vm, void* reserved) {
-    if (reserved) {
-        ConfigValue* config = reinterpret_cast<ConfigValue*>(reserved);
-
-        std::thread([=]() {
-            FPSLimiter::Start(*config);
-        }).detach();
-    }
-    return JNI_VERSION_1_6;
 }
-
-#endif
