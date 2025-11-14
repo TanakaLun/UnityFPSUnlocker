@@ -19,26 +19,6 @@ add_subdirectory(base)        # 基础库，status 依赖
 add_subdirectory(container)   # flat_hash_map 容器
 add_subdirectory(status)      # status 和 statusor
 
-# 移除未使用的组件
-# add_subdirectory(algorithm)
-# add_subdirectory(cleanup)
-# add_subdirectory(crc)
-# add_subdirectory(debugging)
-# add_subdirectory(flags)
-# add_subdirectory(functional)
-# add_subdirectory(hash)
-# add_subdirectory(log)
-# add_subdirectory(memory)
-# add_subdirectory(meta)
-# add_subdirectory(numeric)
-# add_subdirectory(profiling)
-# add_subdirectory(random)
-# add_subdirectory(strings)
-# add_subdirectory(synchronization)
-# add_subdirectory(time)
-# add_subdirectory(types)
-# add_subdirectory(utility)
-
 if (ABSL_BUILD_DLL)
   absl_make_dll()
   if ((BUILD_TESTING AND ABSL_BUILD_TESTING) OR ABSL_BUILD_TEST_HELPERS)

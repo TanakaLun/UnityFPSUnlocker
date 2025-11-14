@@ -1,6 +1,9 @@
 ﻿# CMakeList.txt: UnityFPSUnlocker 的 CMake 项目
 cmake_minimum_required (VERSION 3.21)
 
+# 添加 project 命令
+project(UnityFPSUnlocker)
+
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fno-rtti -fno-exceptions -D_LIBCPP_DISABLE_VISIBILITY_ANNOTATIONS")
 
@@ -48,12 +51,11 @@ add_library (
 find_library(log-lib log)
 target_link_libraries(${LibraryName} ${log-lib})
 
-# 只链接实际使用的absl组件
+# 使用正确的ABSL目标名称
+target_link_libraries(${LibraryName} absl::base)
 target_link_libraries(${LibraryName} absl::status)
 target_link_libraries(${LibraryName} absl::statusor)
-target_link_libraries(${LibraryName} absl::flat_hash_map)
-# 移除未使用的 flat_hash_set
-# target_link_libraries(${LibraryName} absl::flat_hash_set)
+target_link_libraries(${LibraryName} absl::container)
 
 set_target_properties(${LibraryName} PROPERTIES PREFIX "")
 set_target_properties(${LibraryName} PROPERTIES OUTPUT_NAME ${ANDROID_ABI})
