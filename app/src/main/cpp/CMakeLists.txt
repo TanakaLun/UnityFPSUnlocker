@@ -48,5 +48,3 @@ add_library (
 
 find_library(log-lib log)
 target_link_libraries(${LibraryName} ${log-lib})
-
-set_target_properties(${LibraryName} PROPERTIES PREFIX "")
