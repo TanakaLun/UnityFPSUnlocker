@@ -24,6 +24,8 @@ import de.robv.android.xposed.XposedBridge;
 import de.robv.android.xposed.XposedHelpers;
 import de.robv.android.xposed.callbacks.XC_LoadPackage;
 
+import java.io.File;
+
 public class Main implements IXposedHookLoadPackage {
     
     static {
@@ -33,13 +35,12 @@ public class Main implements IXposedHookLoadPackage {
     // Native方法声明
     public static native void nativeInitialize();
     public static native void nativeSetConfig(int delay, int fps, boolean modOpcode, float scale);
-    public static native void nativeSetConfigForPackage(String packageName, int delay, int fps, boolean modOpcode, float scale);
     public static native int nativeGetDelay();
     public static native int nativeGetFPS();
     public static native boolean nativeGetModOpcode();
     public static native float nativeGetScale();
+    public static native boolean nativeShouldEnableForApp();
     public static native void nativeStart(int delay, int fps, boolean modOpcode, float scale);
-    public static native void nativeStartForPackage(String packageName, int delay, int fps, boolean modOpcode, float scale);
     
     // 悬浮窗相关变量
     private View floatingView = null;
@@ -48,16 +49,19 @@ public class Main implements IXposedHookLoadPackage {
     private int screenHeight = 0;
     private boolean isFloatingWindowCreated = false;
     
-    // 当前包名和配置
-    private String currentPackageName = "";
+    // 当前配置
     private int currentDelay = 3;
     private int currentFPS = 120;
     private boolean currentModOpcode = true;
     private float currentScale = 1.0f;
+    
+    // 当前应用信息
+    private String currentAppName = "Unity应用";
+    private boolean isUnityApp = false;
 
     @Override
     public void handleLoadPackage(XC_LoadPackage.LoadPackageParam lpparam) throws Throwable {
-        XposedBridge.log("UnityFPSUnlocker: Loading for package: " + lpparam.packageName);
+        XposedBridge.log("UnityFPSUnlocker: Checking package: " + lpparam.packageName);
         
         try {
             // 初始化Native层
@@ -79,10 +83,21 @@ public class Main implements IXposedHookLoadPackage {
                     }
                     
                     Activity activity = (Activity) param.thisObject;
-                    currentPackageName = activity.getPackageName();
+                    String packageName = activity.getPackageName();
                     
-                    XposedBridge.log("UnityFPSUnlocker: Activity resumed: " + activity.getClass().getName() + 
-                                    ", Package: " + currentPackageName);
+                    // 检查是否为Unity应用（包含libil2cpp.so）
+                    isUnityApp = checkIfUnityApp(activity);
+                    
+                    if (!isUnityApp) {
+                        XposedBridge.log("UnityFPSUnlocker: Not a Unity app, skipping: " + packageName);
+                        return;
+                    }
+                    
+                    // 获取应用名称
+                    currentAppName = getAppName(activity);
+                    
+                    XposedBridge.log("UnityFPSUnlocker: Unity app detected: " + currentAppName + 
+                                    " (" + packageName + ")");
                     
                     // 延迟1秒确保Activity完全初始化
                     new Handler(Looper.getMainLooper()).postDelayed(new Runnable() {
@@ -92,7 +107,7 @@ public class Main implements IXposedHookLoadPackage {
                                 attachToActivity(activity);
                                 isFloatingWindowCreated = true;
                                 
-                                // 应用当前配置到当前包
+                                // 自动应用当前配置
                                 applyCurrentConfig();
                             } catch (Exception e) {
                                 XposedBridge.log("UnityFPSUnlocker Error: " + e.getMessage());
@@ -107,13 +122,46 @@ public class Main implements IXposedHookLoadPackage {
         }
     }
     
+    /**
+     * 检查是否为Unity应用（通过检测libil2cpp.so）
+     */
+    private boolean checkIfUnityApp(Context context) {
+        try {
+            String nativeLibPath = context.getApplicationInfo().nativeLibraryDir;
+            File libil2cppFile = new File(nativeLibPath, "libil2cpp.so");
+            
+            boolean exists = libil2cppFile.exists();
+            XposedBridge.log("UnityFPSUnlocker: Checking libil2cpp.so at " + libil2cppFile.getAbsolutePath() + 
+                            " - Exists: " + exists);
+            
+            return exists;
+        } catch (Exception e) {
+            XposedBridge.log("UnityFPSUnlocker Error checking libil2cpp.so: " + e.getMessage());
+            return false;
+        }
+    }
+    
+    /**
+     * 获取应用名称
+     */
+    private String getAppName(Context context) {
+        try {
+            String packageName = context.getPackageName();
+            android.content.pm.ApplicationInfo appInfo = context.getPackageManager().getApplicationInfo(packageName, 0);
+            String appName = context.getPackageManager().getApplicationLabel(appInfo).toString();
+            return appName;
+        } catch (Exception e) {
+            return "Unity应用";
+        }
+    }
+    
     private void attachToActivity(Activity activity) {
         try {
             hostDecorView = (FrameLayout) activity.getWindow().getDecorView();
             getScreenSize(activity);
             createFloatingWindow(activity);
             
-            XposedBridge.log("UnityFPSUnlocker: Floating window attached successfully for package: " + currentPackageName);
+            XposedBridge.log("UnityFPSUnlocker: Floating window attached successfully for: " + currentAppName);
             
         } catch (Exception e) {
             XposedBridge.log("UnityFPSUnlocker Error: " + e.getMessage());
@@ -174,8 +222,7 @@ public class Main implements IXposedHookLoadPackage {
             floatingView = mainLayout;
             hostDecorView.addView(floatingView, layoutParams);
             
-            XposedBridge.log("UnityFPSUnlocker: Floating window created successfully - Size: " + 
-                floatingWidth + "x" + floatingHeight + " for package: " + currentPackageName);
+            XposedBridge.log("UnityFPSUnlocker: Floating window created successfully for: " + currentAppName);
             
         } catch (Exception e) {
             XposedBridge.log("UnityFPSUnlocker Error creating window: " + e.getMessage());
@@ -196,7 +243,7 @@ public class Main implements IXposedHookLoadPackage {
         
         // 标题文本
         TextView titleText = new TextView(context);
-        titleText.setText("FPS解锁设置 - " + currentPackageName);
+        titleText.setText("FPS解锁 - " + currentAppName);
         titleText.setTextColor(Color.WHITE);
         titleText.setTextSize(14);
         titleText.setTypeface(Typeface.DEFAULT_BOLD);
@@ -255,6 +302,9 @@ public class Main implements IXposedHookLoadPackage {
         );
         scrollView.addView(contentLayout);
         
+        // 状态提示
+        createStatusInfo(context, contentLayout);
+        
         // 添加FPS解锁控制项
         createDelayControl(context, contentLayout);
         createFPSControl(context, contentLayout);
@@ -263,6 +313,23 @@ public class Main implements IXposedHookLoadPackage {
         createApplyButton(context, contentLayout);
         
         parent.addView(scrollView);
+    }
+    
+    private void createStatusInfo(Context context, LinearLayout parent) {
+        TextView statusText = new TextView(context);
+        statusText.setText("✓ 检测到Unity应用");
+        statusText.setTextColor(0xFF4CAF50); // 绿色
+        statusText.setTextSize(12);
+        statusText.setGravity(Gravity.CENTER);
+        
+        LinearLayout.LayoutParams statusParams = new LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.MATCH_PARENT,
+            LinearLayout.LayoutParams.WRAP_CONTENT
+        );
+        statusParams.bottomMargin = dpToPx(context, 8);
+        statusText.setLayoutParams(statusParams);
+        
+        parent.addView(statusText);
     }
     
     private void createDelayControl(Context context, LinearLayout parent) {
@@ -374,7 +441,7 @@ public class Main implements IXposedHookLoadPackage {
     
     private void createApplyButton(Context context, LinearLayout parent) {
         TextView applyButton = new TextView(context);
-        applyButton.setText("应用设置到当前应用");
+        applyButton.setText("应用设置");
         applyButton.setTextColor(Color.WHITE);
         applyButton.setTextSize(16);
         applyButton.setGravity(Gravity.CENTER);
@@ -393,8 +460,8 @@ public class Main implements IXposedHookLoadPackage {
     
     private void applyCurrentConfig() {
         try {
-            nativeSetConfigForPackage(currentPackageName, currentDelay, currentFPS, currentModOpcode, currentScale);
-            XposedBridge.log("UnityFPSUnlocker: Config applied for package: " + currentPackageName + 
+            nativeSetConfig(currentDelay, currentFPS, currentModOpcode, currentScale);
+            XposedBridge.log("UnityFPSUnlocker: Config applied for " + currentAppName + 
                 " - Delay: " + currentDelay + ", FPS: " + currentFPS + 
                 ", ModOpcode: " + currentModOpcode + ", Scale: " + currentScale);
         } catch (Exception e) {
@@ -460,7 +527,7 @@ public class Main implements IXposedHookLoadPackage {
                 hostDecorView.removeView(floatingView);
                 floatingView = null;
                 isFloatingWindowCreated = false;
-                XposedBridge.log("UnityFPSUnlocker: Floating window removed for package: " + currentPackageName);
+                XposedBridge.log("UnityFPSUnlocker: Floating window removed for: " + currentAppName);
             }
         } catch (Exception e) {
             XposedBridge.log("UnityFPSUnlocker Error removing window: " + e.getMessage());

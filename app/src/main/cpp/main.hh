@@ -1,8 +1,6 @@
 #ifndef MAIN_HEADER
 #define MAIN_HEADER
 
-#include <string>
-
 #include "utility/config.hh"
 #include "utility/logger.hh"
 
@@ -12,8 +10,8 @@ public:
     
     void Initialize();
     void SetConfig(const ConfigValue& config);
-    void SetConfigForPackage(const std::string& package_name, const ConfigValue& config);
     ConfigValue GetCurrentConfig() const;
+    bool ShouldEnableForApp();
     
 private:
     FPSUnlockerManager() = default;

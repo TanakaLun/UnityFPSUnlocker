@@ -29,19 +29,14 @@ void FPSUnlockerManager::SetConfig(const ConfigValue& config) {
     }).detach();
 }
 
-void FPSUnlockerManager::SetConfigForPackage(const std::string& package_name, const ConfigValue& config) {
-    current_config_ = config;
-    LOG("[FPSUnlocker] Config updated for package: %s", package_name.c_str());
-    current_config_.DebugPrint();
-    
-    // 应用新配置
-    std::thread([config]() {
-        FPSLimiter::Start(config);
-    }).detach();
-}
-
 ConfigValue FPSUnlockerManager::GetCurrentConfig() const {
     return current_config_;
+}
+
+// 检查是否应该启用FPS解锁
+bool FPSUnlockerManager::ShouldEnableForApp() {
+    // 这里可以添加其他判断逻辑
+    return true; // 默认启用，由Java层检查libil2cpp.so
 }
 
 // JNI方法 - 供Java层调用
@@ -57,16 +52,6 @@ JNIEXPORT void JNICALL Java_io_github_hexstr_UnityFPSUnlocker_Main_nativeSetConf
     
     ConfigValue config(delay, fps, mod_opcode, scale);
     FPSUnlockerManager::GetInstance().SetConfig(config);
-}
-
-JNIEXPORT void JNICALL Java_io_github_hexstr_UnityFPSUnlocker_Main_nativeSetConfigForPackage(
-    JNIEnv* env, jclass clazz, jstring package_name,
-    jint delay, jint fps, jboolean mod_opcode, jfloat scale) {
-    
-    const char* native_package_name = env->GetStringUTFChars(package_name, 0);
-    ConfigValue config(delay, fps, mod_opcode, scale);
-    FPSUnlockerManager::GetInstance().SetConfigForPackage(native_package_name, config);
-    env->ReleaseStringUTFChars(package_name, native_package_name);
 }
 
 JNIEXPORT jint JNICALL Java_io_github_hexstr_UnityFPSUnlocker_Main_nativeGetDelay(JNIEnv* env, jclass clazz) {
@@ -85,7 +70,11 @@ JNIEXPORT jfloat JNICALL Java_io_github_hexstr_UnityFPSUnlocker_Main_nativeGetSc
     return FPSUnlockerManager::GetInstance().GetCurrentConfig().scale_;
 }
 
-// 直接启动FPS解锁（兼容旧版本）
+JNIEXPORT jboolean JNICALL Java_io_github_hexstr_UnityFPSUnlocker_Main_nativeShouldEnableForApp(JNIEnv* env, jclass clazz) {
+    return FPSUnlockerManager::GetInstance().ShouldEnableForApp();
+}
+
+// 直接启动FPS解锁
 JNIEXPORT void JNICALL Java_io_github_hexstr_UnityFPSUnlocker_Main_nativeStart(
     JNIEnv* env, jclass clazz, 
     jint delay, jint fps, jboolean mod_opcode, jfloat scale) {
@@ -94,22 +83,6 @@ JNIEXPORT void JNICALL Java_io_github_hexstr_UnityFPSUnlocker_Main_nativeStart(
     std::thread([config]() {
         FPSLimiter::Start(config);
     }).detach();
-}
-
-JNIEXPORT void JNICALL Java_io_github_hexstr_UnityFPSUnlocker_Main_nativeStartForPackage(
-    JNIEnv* env, jclass clazz, jstring package_name,
-    jint delay, jint fps, jboolean mod_opcode, jfloat scale) {
-    
-    const char* native_package_name = env->GetStringUTFChars(package_name, 0);
-    ConfigValue config(delay, fps, mod_opcode, scale);
-    
-    LOG("[FPSUnlocker] Starting FPS unlock for package: %s", native_package_name);
-    
-    std::thread([config]() {
-        FPSLimiter::Start(config);
-    }).detach();
-    
-    env->ReleaseStringUTFChars(package_name, native_package_name);
 }
 
 }
