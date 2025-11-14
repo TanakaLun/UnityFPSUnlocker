@@ -1,7 +1,6 @@
 ﻿# CMakeList.txt: UnityFPSUnlocker 的 CMake 项目
 cmake_minimum_required (VERSION 3.21)
 
-# 添加 project 命令
 project(UnityFPSUnlocker)
 
 set(CMAKE_CXX_STANDARD 17)
@@ -26,7 +25,6 @@ endif()
 # 添加头文件
 include_directories(
     .
-    "third/absl"
     "third/xdl"
 )
 
@@ -50,12 +48,6 @@ add_library (
 
 find_library(log-lib log)
 target_link_libraries(${LibraryName} ${log-lib})
-
-# 使用正确的ABSL目标名称
-target_link_libraries(${LibraryName} absl::base)
-target_link_libraries(${LibraryName} absl::status)
-target_link_libraries(${LibraryName} absl::statusor)
-target_link_libraries(${LibraryName} absl::container)
 
 set_target_properties(${LibraryName} PROPERTIES PREFIX "")
 set_target_properties(${LibraryName} PROPERTIES OUTPUT_NAME ${ANDROID_ABI})

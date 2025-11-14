@@ -2,10 +2,10 @@
 #define LISTENER_HEADER
 
 #include <cstdint>
-#include <unordered_map>
-#include <tuple>
 
 #include "dispatcher/ibusiness_event.hh"
+
+#include <absl/container/flat_hash_map.h>
 
 namespace FileWatch {
     class Listener : public IBusinessEvent {
@@ -23,7 +23,7 @@ namespace FileWatch {
 
     private:
         int inotify_fd_;
-        std::unordered_map<int, std::tuple<OnModified, OnDeleted>> registered_;
+        absl::flat_hash_map<int, std::tuple<OnModified, OnDeleted>> registered_;
     };
 } // namespace FileWatch
 
