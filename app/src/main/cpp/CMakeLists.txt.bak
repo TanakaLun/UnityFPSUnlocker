@@ -1,12 +1,9 @@
-﻿# CMakeList.txt: UnityFPSUnlocker 的 CMake 项目
+﻿# CMakeList.txt: UnityFPSUnlocker 的 CMake 项目，在此处包括源代码并定义
+# 项目特定的逻辑。
 #
-cmake_minimum_required (VERSION 3.18)
-
-# 添加 project 命令
-project(UnityFPSUnlocker)
+cmake_minimum_required (VERSION 3.21)
 
 set(CMAKE_CXX_STANDARD 17)
-set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fno-rtti -fno-exceptions -D_LIBCPP_DISABLE_VISIBILITY_ANNOTATIONS")
 
 set(LibraryName UnityFPSUnlocker)
@@ -30,14 +27,13 @@ else()
 endif()
 
 set(CMAKE_PREFIX_PATH "${CMAKE_SYSROOT}/${CMAKE_LIBRARY_ARCHITECTURE}")
-message(STATUS "CMAKE_PREFIX_PATH: ${CMAKE_PREFIX_PATH}")
+message(STATUS CMAKE_PREFIX_PATH: ${CMAKE_PREFIX_PATH})
 
 # 添加头文件
 include_directories(
     .
     "third/rapidjson"
     "third/xdl"
-    "third/absl"  # 添加 absl 头文件路径
 )
 
 # 文件写出位置
@@ -51,11 +47,6 @@ aux_source_directory(third/xdl xdl-src)
 aux_source_directory(file_watch listener-src)
 aux_source_directory(file_watch/dispatcher dispatcher-src)
 
-# 添加 jni_interface.cc
-set(JNI_SOURCES 
-    ${PROJECT_SOURCE_DIR}/jni_interface.cc
-)
-
 add_library (
     ${LibraryName}
     SHARED
@@ -65,17 +56,15 @@ add_library (
     ${listener-src}
     ${dispatcher-src}
     ${xdl-src}
-    ${JNI_SOURCES}
 )
 
 find_library(log-lib log)
 target_link_libraries(${LibraryName} ${log-lib})
 
-# 移除对 absl 的依赖，使用标准库替代
-# find_package(absl REQUIRED)
-# target_link_libraries(${LibraryName} absl::status)
-# target_link_libraries(${LibraryName} absl::statusor)  
-# target_link_libraries(${LibraryName} absl::flat_hash_set)
+find_package(absl REQUIRED)
+target_link_libraries(${LibraryName} absl::status)
+target_link_libraries(${LibraryName} absl::statusor)
+target_link_libraries(${LibraryName} absl::flat_hash_set)
 
 set_target_properties(${LibraryName} PROPERTIES PREFIX "")
 set_target_properties(${LibraryName} PROPERTIES OUTPUT_NAME ${ANDROID_ABI})
