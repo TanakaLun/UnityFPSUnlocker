@@ -31,19 +31,28 @@ include_directories(
 # 文件写出位置
 set(LIBRARY_OUTPUT_PATH ${PROJECT_SOURCE_DIR}/libs/${CMAKE_BUILD_TYPE}/)
 
-# 源代码
-aux_source_directory(${PROJECT_SOURCE_DIR}/${LibraryName} program-src)
-aux_source_directory(unity unity-src)
-aux_source_directory(utility utility-src)
-aux_source_directory(third/xdl xdl-src)
+# 明确列出所有源文件
+set(SOURCES
+    main.cc
+    fpslimiter.cc
+    unity/unity_engine.cc
+    utility/config.cc
+)
+
+# XDL 源文件
+set(XDL_SOURCES
+    third/xdl/xdl.c
+    third/xdl/xdl_iterate.c
+    third/xdl/xdl_linker.c
+    third/xdl/xdl_lzma.c
+    third/xdl/xdl_util.c
+)
 
 add_library (
     ${LibraryName}
     SHARED
-    ${program-src}
-    ${unity-src}
-    ${utility-src}
-    ${xdl-src}
+    ${SOURCES}
+    ${XDL_SOURCES}
 )
 
 find_library(log-lib log)
