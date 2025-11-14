@@ -40,33 +40,33 @@ public:
 class Status {
 public:
     enum Code {
-        OK = 0,
-        CANCELLED = 1,
-        UNKNOWN = 2,
-        INVALID_ARGUMENT = 3,
-        DEADLINE_EXCEEDED = 4,
-        NOT_FOUND = 5,
-        ALREADY_EXISTS = 6,
-        PERMISSION_DENIED = 7,
-        RESOURCE_EXHAUSTED = 8,
-        FAILED_PRECONDITION = 9,
-        ABORTED = 10,
-        OUT_OF_RANGE = 11,
-        UNIMPLEMENTED = 12,
-        INTERNAL = 13,
-        UNAVAILABLE = 14,
-        DATA_LOSS = 15,
-        UNAUTHENTICATED = 16
+        STATUS_OK = 0,                    // 重命名避免冲突
+        STATUS_CANCELLED = 1,
+        STATUS_UNKNOWN = 2,
+        STATUS_INVALID_ARGUMENT = 3,
+        STATUS_DEADLINE_EXCEEDED = 4,
+        STATUS_NOT_FOUND = 5,
+        STATUS_ALREADY_EXISTS = 6,
+        STATUS_PERMISSION_DENIED = 7,
+        STATUS_RESOURCE_EXHAUSTED = 8,
+        STATUS_FAILED_PRECONDITION = 9,
+        STATUS_ABORTED = 10,
+        STATUS_OUT_OF_RANGE = 11,
+        STATUS_UNIMPLEMENTED = 12,
+        STATUS_INTERNAL = 13,
+        STATUS_UNAVAILABLE = 14,
+        STATUS_DATA_LOSS = 15,
+        STATUS_UNAUTHENTICATED = 16
     };
 
-    Status() : code_(OK) {}
+    Status() : code_(STATUS_OK) {}
     Status(Code code, const std::string& message = "") : code_(code), message_(message) {}
 
-    bool ok() const { return code_ == OK; }
+    bool ok() const { return code_ == STATUS_OK; }
     Code code() const { return code_; }
     const std::string& message() const { return message_; }
 
-    static Status OK() { return Status(); }
+    static Status OkStatus() { return Status(); }  // 重命名方法
 
 private:
     Code code_;
@@ -77,9 +77,9 @@ private:
 template<typename T>
 class StatusOr {
 public:
-    StatusOr() : status_(Status::UNKNOWN) {}
+    StatusOr() : status_(Status::STATUS_UNKNOWN) {}
     StatusOr(const Status& status) : status_(status) {}
-    StatusOr(const T& value) : status_(Status::OK()), value_(value) {}
+    StatusOr(const T& value) : status_(Status::OkStatus()), value_(value) {}  // 使用新方法名
     
     bool ok() const { return status_.ok(); }
     const Status& status() const { return status_; }

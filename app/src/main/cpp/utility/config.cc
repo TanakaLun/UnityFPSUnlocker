@@ -34,11 +34,11 @@ namespace Utility {
     StatusOr<jobject> GetApplicationInfo(JNIEnv* env) {
         jobject application = GetApplication(env);
         if (application == nullptr) {
-            return Status(Status::NOT_FOUND, "No method id currentApplication");
+            return Status(Status::STATUS_NOT_FOUND, "No method id currentApplication");
         }
         jclass application_clazz = env->GetObjectClass(application);
         if (application_clazz == nullptr) {
-            return Status(Status::NOT_FOUND, "No class application");
+            return Status(Status::STATUS_NOT_FOUND, "No class application");
         }
         jmethodID get_application_info = env->GetMethodID(
             application_clazz,
@@ -48,13 +48,13 @@ namespace Utility {
             return env->CallObjectMethod(application, get_application_info);
         }
         else {
-            return Status(Status::NOT_FOUND, "No method id getApplicationInfo");
+            return Status(Status::STATUS_NOT_FOUND, "No method id getApplicationInfo");
         }
     }
 
     StatusOr<std::string> GetLibraryPath(JNIEnv* env, jobject application_info) {
         if (!application_info) {
-            return Status(Status::NOT_FOUND, "No method id");
+            return Status(Status::STATUS_NOT_FOUND, "No method id");
         }
         jfieldID native_library_dir_id = env->GetFieldID(
             env->GetObjectClass(application_info),
@@ -69,27 +69,27 @@ namespace Utility {
             return package_name;
         }
         else {
-            return Status(Status::NOT_FOUND, "No nativeLibraryDir");
+            return Status(Status::STATUS_NOT_FOUND, "No nativeLibraryDir");
         }
     }
 
     StatusOr<JavaVM*> GetVM() {
         void* art = xdl_open("libart.so", 0);
         if (!art) {
-            return Status(Status::INTERNAL, "Cannot open libart.so.");
+            return Status(Status::STATUS_INTERNAL, "Cannot open libart.so.");
         }
 
         using JNIGetCreatedJavaVMs_t = int (*)(JavaVM** vmBuf, jsize bufLen, jsize* nVMs);
         static JNIGetCreatedJavaVMs_t JNIGetCreatedJavaVMsFunc = (JNIGetCreatedJavaVMs_t)xdl_sym(art, "JNI_GetCreatedJavaVMs", nullptr);
 
         if (!JNIGetCreatedJavaVMsFunc) {
-            return Status(Status::NOT_FOUND, "Cannot get symbol JNIGetCreatedJavaVMsFunc");
+            return Status(Status::STATUS_NOT_FOUND, "Cannot get symbol JNIGetCreatedJavaVMsFunc");
         }
 
         jsize numVMs;
         JavaVM* vms = nullptr;
         if (JNIGetCreatedJavaVMsFunc(&vms, 1, &numVMs) != 0) {
-            return Status(Status::NOT_FOUND, "Cannot get vms");
+            return Status(Status::STATUS_NOT_FOUND, "Cannot get vms");
         }
         return vms;
     }
