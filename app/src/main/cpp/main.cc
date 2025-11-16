@@ -13,6 +13,7 @@ FPSUnlockerManager& FPSUnlockerManager::GetInstance() {
 }
 
 void FPSUnlockerManager::Initialize() {
+    // 初始化默认配置
     current_config_ = ConfigValue(3, 120, true, 1.0f);
     LOG("[FPSUnlocker] Manager initialized with default config");
 }
@@ -22,6 +23,7 @@ void FPSUnlockerManager::SetConfig(const ConfigValue& config) {
     LOG("[FPSUnlocker] Config updated");
     current_config_.DebugPrint();
     
+    // 立即应用新配置
     std::thread([config]() {
         FPSLimiter::Start(config);
     }).detach();
@@ -31,7 +33,7 @@ ConfigValue FPSUnlockerManager::GetCurrentConfig() const {
     return current_config_;
 }
 
-// JNI方法实现
+// JNI方法 - 供Java层调用
 extern "C" {
 
 JNIEXPORT void JNICALL Java_io_github_hexstr_UnityFPSUnlocker_Main_nativeInitialize(JNIEnv* env, jclass clazz) {
@@ -64,17 +66,6 @@ JNIEXPORT jboolean JNICALL Java_io_github_hexstr_UnityFPSUnlocker_Main_nativeGet
 
 JNIEXPORT jfloat JNICALL Java_io_github_hexstr_UnityFPSUnlocker_Main_nativeGetScale(JNIEnv* env, jclass clazz) {
     return FPSUnlockerManager::GetInstance().GetCurrentConfig().scale_;
-}
-
-JNIEXPORT void JNICALL Java_io_github_hexstr_UnityFPSUnlocker_Main_nativeStart(
-    JNIEnv* env, jclass clazz, 
-    jint delay, jint fps, jboolean mod_opcode, jfloat scale) {
-    
-    LOG("[JNI] nativeStart called");
-    ConfigValue config(delay, fps, mod_opcode, scale);
-    std::thread([config]() {
-        FPSLimiter::Start(config);
-    }).detach();
 }
 
 } // extern "C"

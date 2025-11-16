@@ -11,10 +11,13 @@ import android.view.Gravity;
 import android.view.MotionEvent;
 import android.view.View;
 import android.view.WindowManager;
+import android.widget.AdapterView;
+import android.widget.ArrayAdapter;
 import android.widget.FrameLayout;
 import android.widget.LinearLayout;
 import android.widget.ScrollView;
 import android.widget.SeekBar;
+import android.widget.Spinner;
 import android.widget.Switch;
 import android.widget.TextView;
 
@@ -25,6 +28,8 @@ import de.robv.android.xposed.XposedHelpers;
 import de.robv.android.xposed.callbacks.XC_LoadPackage;
 
 import java.io.File;
+import java.util.Arrays;
+import java.util.List;
 
 public class Main implements IXposedHookLoadPackage {
     
@@ -39,8 +44,6 @@ public class Main implements IXposedHookLoadPackage {
     public static native int nativeGetFPS();
     public static native boolean nativeGetModOpcode();
     public static native float nativeGetScale();
-    public static native boolean nativeShouldEnableForApp();
-    public static native void nativeStart(int delay, int fps, boolean modOpcode, float scale);
     
     // 悬浮窗相关变量
     private View floatingView = null;
@@ -54,6 +57,9 @@ public class Main implements IXposedHookLoadPackage {
     private int currentFPS = 120;
     private boolean currentModOpcode = true;
     private float currentScale = 1.0f;
+    
+    // 预设帧率选项
+    private final List<Integer> fpsOptions = Arrays.asList(60, 90, 120, 144, 165, 240);
     
     // 当前应用信息
     private String currentAppName = "Unity应用";
@@ -310,14 +316,13 @@ public class Main implements IXposedHookLoadPackage {
         createFPSControl(context, contentLayout);
         createModOpcodeControl(context, contentLayout);
         createScaleControl(context, contentLayout);
-        createApplyButton(context, contentLayout);
         
         parent.addView(scrollView);
     }
     
     private void createStatusInfo(Context context, LinearLayout parent) {
         TextView statusText = new TextView(context);
-        statusText.setText("✓ 检测到Unity应用");
+        statusText.setText("✓ 检测到Unity应用 - 即时生效");
         statusText.setTextColor(0xFF4CAF50); // 绿色
         statusText.setTextSize(12);
         statusText.setGravity(Gravity.CENTER);
@@ -350,6 +355,8 @@ public class Main implements IXposedHookLoadPackage {
             public void onProgressChanged(SeekBar seekBar, int progress, boolean fromUser) {
                 currentDelay = progress;
                 delayText.setText("延迟启动: " + currentDelay + "秒");
+                // 即时应用配置
+                applyCurrentConfig();
             }
             
             @Override public void onStartTrackingTouch(SeekBar seekBar) {}
@@ -365,28 +372,46 @@ public class Main implements IXposedHookLoadPackage {
         LinearLayout fpsLayout = new LinearLayout(context);
         fpsLayout.setOrientation(LinearLayout.VERTICAL);
         
-        final TextView fpsText = new TextView(context);
-        fpsText.setText("目标帧率: " + currentFPS + " FPS");
-        fpsText.setTextColor(Color.WHITE);
-        fpsText.setTextSize(14);
+        TextView fpsLabel = new TextView(context);
+        fpsLabel.setText("目标帧率:");
+        fpsLabel.setTextColor(Color.WHITE);
+        fpsLabel.setTextSize(14);
         
-        SeekBar fpsSeekBar = new SeekBar(context);
-        fpsSeekBar.setMax(240 - 30); // 30-240 FPS
-        fpsSeekBar.setProgress(currentFPS - 30);
+        // 创建下拉框替代滑条
+        Spinner fpsSpinner = new Spinner(context);
         
-        fpsSeekBar.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
+        // 创建帧率选项数组
+        String[] fpsArray = new String[fpsOptions.size()];
+        for (int i = 0; i < fpsOptions.size(); i++) {
+            fpsArray[i] = fpsOptions.get(i) + " FPS";
+        }
+        
+        ArrayAdapter<String> adapter = new ArrayAdapter<>(context, 
+            android.R.layout.simple_spinner_item, fpsArray);
+        adapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item);
+        fpsSpinner.setAdapter(adapter);
+        
+        // 设置当前选中的帧率
+        int selectedPosition = fpsOptions.indexOf(currentFPS);
+        if (selectedPosition == -1) {
+            selectedPosition = fpsOptions.indexOf(120); // 默认120
+        }
+        fpsSpinner.setSelection(selectedPosition);
+        
+        fpsSpinner.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
             @Override
-            public void onProgressChanged(SeekBar seekBar, int progress, boolean fromUser) {
-                currentFPS = progress + 30;
-                fpsText.setText("目标帧率: " + currentFPS + " FPS");
+            public void onItemSelected(AdapterView<?> parent, View view, int position, long id) {
+                currentFPS = fpsOptions.get(position);
+                // 即时应用配置
+                applyCurrentConfig();
             }
             
-            @Override public void onStartTrackingTouch(SeekBar seekBar) {}
-            @Override public void onStopTrackingTouch(SeekBar seekBar) {}
+            @Override
+            public void onNothingSelected(AdapterView<?> parent) {}
         });
         
-        fpsLayout.addView(fpsText);
-        fpsLayout.addView(fpsSeekBar);
+        fpsLayout.addView(fpsLabel);
+        fpsLayout.addView(fpsSpinner);
         parent.addView(fpsLayout);
     }
     
@@ -403,6 +428,8 @@ public class Main implements IXposedHookLoadPackage {
         opcodeSwitch.setChecked(currentModOpcode);
         opcodeSwitch.setOnCheckedChangeListener((buttonView, isChecked) -> {
             currentModOpcode = isChecked;
+            // 即时应用配置
+            applyCurrentConfig();
         });
         
         opcodeLayout.addView(opcodeText);
@@ -428,6 +455,8 @@ public class Main implements IXposedHookLoadPackage {
             public void onProgressChanged(SeekBar seekBar, int progress, boolean fromUser) {
                 currentScale = 0.5f + progress * 0.1f;
                 scaleText.setText("分辨率缩放: " + String.format("%.1f", currentScale) + "x");
+                // 即时应用配置
+                applyCurrentConfig();
             }
             
             @Override public void onStartTrackingTouch(SeekBar seekBar) {}
@@ -437,25 +466,6 @@ public class Main implements IXposedHookLoadPackage {
         scaleLayout.addView(scaleText);
         scaleLayout.addView(scaleSeekBar);
         parent.addView(scaleLayout);
-    }
-    
-    private void createApplyButton(Context context, LinearLayout parent) {
-        TextView applyButton = new TextView(context);
-        applyButton.setText("应用设置");
-        applyButton.setTextColor(Color.WHITE);
-        applyButton.setTextSize(16);
-        applyButton.setGravity(Gravity.CENTER);
-        applyButton.setBackgroundColor(0xFF4CAF50);
-        applyButton.setPadding(0, dpToPx(context, 12), 0, dpToPx(context, 12));
-        
-        applyButton.setOnClickListener(new View.OnClickListener() {
-            @Override
-            public void onClick(View v) {
-                applyCurrentConfig();
-            }
-        });
-        
-        parent.addView(applyButton);
     }
     
     private void applyCurrentConfig() {
@@ -527,7 +537,6 @@ public class Main implements IXposedHookLoadPackage {
                 hostDecorView.removeView(floatingView);
                 floatingView = null;
                 isFloatingWindowCreated = false;
-                XposedBridge.log("UnityFPSUnlocker: Floating window removed for: " + currentAppName);
             }
         } catch (Exception e) {
             XposedBridge.log("UnityFPSUnlocker Error removing window: " + e.getMessage());
