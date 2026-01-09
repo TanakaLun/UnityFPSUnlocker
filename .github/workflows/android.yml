@@ -1,4 +1,4 @@
-name: APK Build
+name: Build FPSUNLOCKER APK
 
 on:
   push:
@@ -13,6 +13,11 @@ on:
           - 'both'
           - 'debug'
           - 'release'
+      custom_version_name:
+        type: string
+        description: '自定义版本名称（可选，留空则使用短提交哈希）'
+        required: false
+        default: ''
 
 permissions:
   contents: read
@@ -30,6 +35,8 @@ jobs:
     steps:
       - name: ⬇️ Checkout Repository
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # 获取所有提交历史，用于计算版本号
       
       - name: 🛠️ Set up Java
         uses: actions/setup-java@v4
@@ -40,6 +47,58 @@ jobs:
       - name: 💻 Set up Android SDK and NDK
         uses: android-actions/setup-android@v3
       
+      - name: ⚙️ Calculate Version Info
+        id: version_info
+        env:
+          COMMIT_ID: ${{ github.sha }}
+        run: |
+          # 获取短提交哈希（前7位）
+          COMMIT_ID_SHORT=${COMMIT_ID::7}
+          echo "commit_short=$COMMIT_ID_SHORT" >> $GITHUB_OUTPUT
+          
+          # 计算版本号（提交总数+1，从2开始）
+          COMMIT_COUNT=$(git rev-list --count HEAD)
+          VERSION_CODE=$((COMMIT_COUNT + 1))
+          echo "version_code=$VERSION_CODE" >> $GITHUB_OUTPUT
+          
+          # 确定版本名称
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" && -n "${{ github.event.inputs.custom_version_name }}" ]]; then
+            # 手动触发且有自定义版本名称
+            VERSION_NAME="${{ github.event.inputs.custom_version_name }}"
+            echo "Using custom version name: $VERSION_NAME"
+          else
+            # 使用短提交哈希
+            VERSION_NAME="$COMMIT_ID_SHORT"
+          fi
+          echo "version_name=$VERSION_NAME" >> $GITHUB_OUTPUT
+          
+          echo "Version Code: $VERSION_CODE"
+          echo "Version Name: $VERSION_NAME"
+      
+      - name: 🛠️ Modify Gradle Build File
+        run: |
+          # 查找并修改 build.gradle
+          GRADLE_FILE="app/build.gradle"
+          
+          echo "Found gradle file: $GRADLE_FILE"
+            
+          # 备份原始文件
+          cp "$GRADLE_FILE" "${GRADLE_FILE}.bak"
+            
+          # 使用 sed 替换 versionCode 和 versionName
+          # 匹配格式: versionCode 1 或 versionCode = 1
+          sed -i "s/versionCode\s*[0-9]*/versionCode ${{ steps.version_info.outputs.version_code }}/g" "$GRADLE_FILE"
+            
+          # 匹配格式: versionName "xxx" 或 versionName = "xxx"
+          sed -i "s/versionName\s*\".*\"/versionName \"${{ steps.version_info.outputs.version_name }}\"/g" "$GRADLE_FILE"
+            
+          echo "Modified versionCode to: ${{ steps.version_info.outputs.version_code }}"
+          echo "Modified versionName to: ${{ steps.version_info.outputs.version_name }}"
+            
+          # 显示修改后的相关行
+          echo "Modified lines:"
+          grep -n "versionCode\|versionName" "$GRADLE_FILE" || true
+      
       - name: ⚙️ Grant execute permission to gradlew
         run: chmod +x gradlew
       
@@ -49,14 +108,14 @@ jobs:
       - name: 📦 Find APK file and rename
         id: build_info
         env:
-          COMMIT_ID: ${{ github.sha }}
+          COMMIT_SHORT: ${{ steps.version_info.outputs.commit_short }}
+          VERSION_CODE: ${{ steps.version_info.outputs.version_code }}
         run: |
           BUILD_TIMESTAMP=$(date +%s)
           echo "build_timestamp=$BUILD_TIMESTAMP" >> $GITHUB_OUTPUT
 
           ORIGINAL_APK_PATH=$(find ${{ github.workspace }}/app/build/outputs/apk/debug/ -name "*.apk" | head -n 1)
-          COMMIT_ID_SHORT=${COMMIT_ID::7}
-          NEW_APK_NAME="FPSUNLOCKER-${{ env.NATIVE_TARGET }}-${{ env.BUILD_TYPE }}-${COMMIT_ID_SHORT}.apk"
+          NEW_APK_NAME="FPSUNLOCKER-${{ env.NATIVE_TARGET }}-${{ env.BUILD_TYPE }}-v${VERSION_CODE}-${COMMIT_SHORT}.apk"
           
           # 重命名 APK 文件
           NEW_APK_DIR=$(dirname "$ORIGINAL_APK_PATH")
@@ -68,7 +127,7 @@ jobs:
       - name: 📤 Upload Debug APK Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: FPSUNLOCKER-debug
+          name: FPSUNLOCKER-debug-v${{ steps.version_info.outputs.version_code }}
           path: ${{ steps.build_info.outputs.apk_path }}
           retention-days: 7
 
@@ -83,6 +142,8 @@ jobs:
     steps:
       - name: ⬇️ Checkout Repository
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # 获取所有提交历史，用于计算版本号
       
       - name: 🛠️ Set up Java
         uses: actions/setup-java@v4
@@ -93,6 +154,58 @@ jobs:
       - name: 💻 Set up Android SDK and NDK
         uses: android-actions/setup-android@v3
       
+      - name: ⚙️ Calculate Version Info
+        id: version_info
+        env:
+          COMMIT_ID: ${{ github.sha }}
+        run: |
+          # 获取短提交哈希（前7位）
+          COMMIT_ID_SHORT=${COMMIT_ID::7}
+          echo "commit_short=$COMMIT_ID_SHORT" >> $GITHUB_OUTPUT
+          
+          # 计算版本号（提交总数+1，从2开始）
+          COMMIT_COUNT=$(git rev-list --count HEAD)
+          VERSION_CODE=$((COMMIT_COUNT + 1))
+          echo "version_code=$VERSION_CODE" >> $GITHUB_OUTPUT
+          
+          # 确定版本名称
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" && -n "${{ github.event.inputs.custom_version_name }}" ]]; then
+            # 手动触发且有自定义版本名称
+            VERSION_NAME="${{ github.event.inputs.custom_version_name }}"
+            echo "Using custom version name: $VERSION_NAME"
+          else
+            # 使用短提交哈希
+            VERSION_NAME="$COMMIT_ID_SHORT"
+          fi
+          echo "version_name=$VERSION_NAME" >> $GITHUB_OUTPUT
+          
+          echo "Version Code: $VERSION_CODE"
+          echo "Version Name: $VERSION_NAME"
+      
+      - name: 🛠️ Modify Gradle Build File
+        run: |
+          # 查找并修改 build.gradle
+          GRADLE_FILE="app/build.gradle"
+          
+          echo "Found gradle file: $GRADLE_FILE"
+            
+          # 备份原始文件
+          cp "$GRADLE_FILE" "${GRADLE_FILE}.bak"
+            
+          # 使用 sed 替换 versionCode 和 versionName
+          # 匹配格式: versionCode 1 或 versionCode = 1
+          sed -i "s/versionCode\s*[0-9]*/versionCode ${{ steps.version_info.outputs.version_code }}/g" "$GRADLE_FILE"
+            
+          # 匹配格式: versionName "xxx" 或 versionName = "xxx"
+          sed -i "s/versionName\s*\".*\"/versionName \"${{ steps.version_info.outputs.version_name }}\"/g" "$GRADLE_FILE"
+            
+          echo "Modified versionCode to: ${{ steps.version_info.outputs.version_code }}"
+          echo "Modified versionName to: ${{ steps.version_info.outputs.version_name }}"
+            
+          # 显示修改后的相关行
+          echo "Modified lines:"
+          grep -n "versionCode\|versionName" "$GRADLE_FILE" || true
+      
       - name: ⚙️ Grant execute permission to gradlew
         run: chmod +x gradlew
       
@@ -102,14 +215,14 @@ jobs:
       - name: 📦 Find APK file and rename
         id: build_info
         env:
-          COMMIT_ID: ${{ github.sha }}
+          COMMIT_SHORT: ${{ steps.version_info.outputs.commit_short }}
+          VERSION_CODE: ${{ steps.version_info.outputs.version_code }}
         run: |
           BUILD_TIMESTAMP=$(date +%s)
           echo "build_timestamp=$BUILD_TIMESTAMP" >> $GITHUB_OUTPUT
 
           ORIGINAL_APK_PATH=$(find ${{ github.workspace }}/app/build/outputs/apk/release/ -name "*.apk" | head -n 1)
-          COMMIT_ID_SHORT=${COMMIT_ID::7}
-          NEW_APK_NAME="FPSUNLOCKER-${{ env.NATIVE_TARGET }}-${{ env.BUILD_TYPE }}-${COMMIT_ID_SHORT}.apk"
+          NEW_APK_NAME="FPSUNLOCKER-${{ env.NATIVE_TARGET }}-${{ env.BUILD_TYPE }}-v${VERSION_CODE}-${COMMIT_SHORT}.apk"
           
           # 重命名 APK 文件
           NEW_APK_DIR=$(dirname "$ORIGINAL_APK_PATH")
@@ -121,6 +234,6 @@ jobs:
       - name: 📤 Upload Release APK Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: FPSUNLOCKER-release
+          name: FPSUNLOCKER-release-v${{ steps.version_info.outputs.version_code }}
           path: ${{ steps.build_info.outputs.apk_path }}
           retention-days: 7
